@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>로트카-볼테라 시뮬레이션</title>
+    <!-- p5.js 라이브러리 불러오기 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.js"></script>
+    <style>
+        body {
+            font-family: 'Pretendard', sans-serif;
+            background-color: #f4f4f9;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 20px;
+        }
+        #canvas-container {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+            background-color: white;
+        }
+        .controls {
+            margin-top: 20px;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            width: 760px;
+        }
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+        }
+        label { font-size: 14px; font-weight: bold; margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+
+    <h2>로트카-볼테라 (포식자-피식자) 모델</h2>
+    <div id="canvas-container"></div>
+    
+    <div class="controls" id="controls">
+        <!-- p5.js에서 슬라이더가 이 안으로 들어옵니다 -->
+    </div>
+
+<script>
+    // 개체수 변수
+    let x = 40; // 피식자(토끼) 초기 개체수
+    let y = 20; // 포식자(여우) 초기 개체수
+    
+    // 로트카-볼테라 상수 슬라이더
+    let alphaSlider, betaSlider, deltaSlider, gammaSlider;
+    
+    let historyX = []; // 피식자 개체수 기록
+    let historyY = []; // 포식자 개체수 기록
+    let dt = 0.05; // 시간 간격 (미분 계산용)
+    
+    function setup() {
+        let canvas = createCanvas(800, 400);
+        canvas.parent('canvas-container');
+        
+        // 슬라이더 생성 및 UI 배치
+        createControl('피식자 번식률 (Alpha): ', 0.1, 2.0, 1.0, 0.01, 'alpha');
+        createControl('포식률 (Beta): ', 0.01, 0.1, 0.05, 0.001, 'beta');
+        createControl('포식자 번식률 (Delta): ', 0.01, 0.1, 0.02, 0.001, 'delta');
+        createControl('포식자 사망률 (Gamma): ', 0.1, 2.0, 0.5, 0.01, 'gamma');
+    }
+
+    function createControl(labelText, min, max, val, step, id) {
+        let group = createDiv().addClass('slider-group').parent('controls');
+        let label = createElement('label', labelText + val).parent(group);
+        let slider = createSlider(min, max, val, step).parent(group);
+        
+        // 슬라이더 움직일 때 라벨 텍스트 업데이트
+        slider.input(() => {
+            label.html(labelText + slider.value());
+            // 값이 바뀌면 그래프 초기화
+            x = 40; y = 20;
+            historyX = []; historyY = [];
+        });
+        
+        if(id === 'alpha') alphaSlider = slider;
+        if(id === 'beta') betaSlider = slider;
+        if(id === 'delta') deltaSlider = slider;
+        if(id === 'gamma') gammaSlider = slider;
+    }
+
+    function draw() {
+        background(255);
+        
+        let alpha = alphaSlider.value();
+        let beta = betaSlider.value();
+        let delta = deltaSlider.value();
+        let gamma = gammaSlider.value();
+        
+        // [핵심 수학] 오일러 방법을 이용한 미분방정식 근사 계산
+        // dx/dt = alpha*x - beta*x*y
+        // dy/dt = delta*x*y - gamma*y
+        let dx = (alpha * x - beta * x * y) * dt;
+        let dy = (delta * x * y - gamma * y) * dt;
+        
+        x += dx;
+        y += dy;
+        
+        // 화면 밖으로 나가지 않게 최소값 설정
+        if (x < 0) x = 0;
+        if (y < 0) y = 0;
+        
+        // 배열에 기록 저장
+        historyX.push(x);
+        historyY.push(y);
+        
+        // 그래프가 화면 끝에 닿으면 옛날 데이터 삭제 (스크롤 효과)
+        if (historyX.length > width) {
+            historyX.shift();
+            historyY.shift();
+        }
+        
+        // 그래프 그리기
+        drawGraph();
+        drawLegend();
+    }
+
+    function drawGraph() {
+        noFill();
+        strokeWeight(2);
+        
+        // 피식자(토끼) 그래프 - 파란색
+        stroke(0, 100, 255);
+        beginShape();
+        for (let i = 0; i < historyX.length; i++) {
+            // y좌표는 캔버스 높이에서 빼서 뒤집어줌 (좌표계가 아래로 갈수록 커지므로)
+            // 개체수가 커질 수 있으므로 적절히 축소 (* 3)
+            vertex(i, height - historyX[i] * 3);
+        }
+        endShape();
+        
+        // 포식자(여우) 그래프 - 빨간색
+        stroke(255, 50, 50);
+        beginShape();
+        for (let i = 0; i < historyY.length; i++) {
+            vertex(i, height - historyY[i] * 3);
+        }
+        endShape();
+    }
+    
+    function drawLegend() {
+        noStroke();
+        fill(0, 100, 255);
+        rect(20, 20, 15, 15);
+        fill(0);
+        text("피식자 (Prey, x)", 45, 32);
+        
+        fill(255, 50, 50);
+        rect(20, 45, 15, 15);
+        fill(0);
+        text("포식자 (Predator, y)", 45, 57);
+    }
+</script>
+
+</body>
+</html>
